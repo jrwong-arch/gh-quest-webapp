@@ -1,89 +1,35 @@
 import { useEffect, useState } from "react";
+import {
+  exampleAalysisResults,
+  studentOutcome,
+  tutorialOutcome,
+} from "./constants";
 import "./App.css";
 
 function App() {
   const apiKey = "AIzaSyA9lBrctahbGKYoLQQkNPOFF9JRwggwgs4";
-  const json = {
-    "6ea52cac-203d-4636-8528-356bbc52d160": {
-      componentData: {
-        name: "Move",
-        description: "Translate (move) an object along a vector",
-        runTime: "25",
-      },
-      nodeData: {
-        inputs: [
-          {
-            name: "Geometry",
-            connections: [
-              "89c58804-31ff-43b1-a08b-eabcf22f568b",
-              "7c40ef27-a8e0-4214-88d5-44303a2502bc",
-            ],
-          },
-          {
-            name: "Motion",
-            connections: ["c948958a-0a51-4c8a-9ac8-0311f8a45cd5"],
-          },
-        ],
-        outputs: [
-          {
-            name: "Geometry",
-            connections: ["f770882b-ee52-4898-adb4-351b305b24b1"],
-          },
-          {
-            name: "Move",
-            connections: [],
-          },
-        ],
-      },
-    },
-    "89c58804-31ff-43b1-a08b-eabcf22f568b": {
-      componentData: {
-        name: "Point",
-        description: "Point",
-        runTime: "3",
-      },
-      nodeData: {
-        inputs: [
-          {
-            name: "Point",
-            connections: [],
-          },
-        ],
-        outputs: [
-          {
-            name: "Geometry",
-            connections: ["6ea52cac-203d-4636-8528-356bbc52d160"],
-          },
-        ],
-      },
-    },
-    "7c40ef27-a8e0-4214-88d5-44303a2502bc": {
-      componentData: {
-        name: "Unit Z",
-        description: "Z",
-        runTime: "2",
-      },
-      nodeData: {
-        inputs: [
-          {
-            name: "Factor",
-            connections: [],
-          },
-        ],
-        outputs: [
-          {
-            name: "Unit Vector",
-            connections: ["6ea52cac-203d-4636-8528-356bbc52d160"],
-          },
-        ],
-      },
-    },
+
+  const metricEmoticons: { [key: string]: string } = {
+    runtime_speed: "✅",
+    component_count: "🧩",
+    external_packages: "📦",
+    errors: "❌",
+    warnings: "⚠️",
+    redundant_components: "🔄",
+    objective_completion: "🎯",
   };
 
-  const [messages, setMessages] = useState<string[]>([
-    JSON.stringify(json, null, 2),
+  const [analysisResults, setAnalysisResults] = useState();
+  const [filesToAnalyze, setFilesToAnalyze] = useState([
+    {
+      name: "student",
+      content: studentOutcome,
+    },
+    {
+      name: "tutorial",
+      content: tutorialOutcome,
+    },
   ]);
-  const [aiResponses, setAIResponses] = useState<string[]>([]);
   const [status, setStatus] = useState("Disconnected");
 
   useEffect(() => {
@@ -98,8 +44,8 @@ function App() {
 
     // Handle incoming messages
     ws.onmessage = (event) => {
-      setMessages((prev) => [...prev, event.data]);
       console.log("Message received:", event.data);
+      setFilesToAnalyze(event.data);
     };
 
     // Handle connection close
@@ -119,8 +65,16 @@ function App() {
     };
   }, []);
 
-  const sendMessageToAI = async (input: string) => {
+  const sendMessageToAI = async () => {
     try {
+      const evaluationResults = JSON.stringify({
+        prompt:
+          "evaluate the two graphs student and tutorial based on the evaluation paradigm based on example anylysis results and return the response in a json format that adheres to the example anylysis results. make sure to fit the exact json format in the example anylysis results.",
+        studentOutcome: filesToAnalyze[0].content,
+        tutorialOutcome: filesToAnalyze[1].content,
+        exampleAalysisResults,
+      });
+      console.log("Evaluation Results:", evaluationResults);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
       const response = await fetch(url, {
@@ -133,7 +87,7 @@ function App() {
             {
               parts: [
                 {
-                  text: input,
+                  text: evaluationResults,
                 },
               ],
             },
@@ -148,54 +102,246 @@ function App() {
       const data = await response.json();
       const extractedText =
         data.candidates[0]?.content?.parts[0]?.text || "No text found";
+      // Extract valid JSON from the response text
+      const jsonStart = extractedText.indexOf("{");
+      const jsonEnd = extractedText.lastIndexOf("}");
+      const validJson = extractedText.substring(jsonStart, jsonEnd + 1);
+
+      const parsedResponse = JSON.parse(validJson);
+      console.log("Parsed AI response:", parsedResponse);
       console.log("AI response:", data);
 
       // Extract the AI response text and update the state
-      setAIResponses((prev) => [...prev, `AI: ${extractedText}`]);
+      setAnalysisResults(parsedResponse);
     } catch (error) {
       console.error("Error communicating with AI:", error);
-      setAIResponses((prev) => [...prev, `Error: ${error.message}`]);
     }
   };
+
+  useEffect(() => {
+    // Call the sendMessageToAI function when the component mounts
+    sendMessageToAI();
+  }, []);
+
   return (
     <>
-      <div>
-        <h1>WebSocket Client</h1>
-        <p>Status: {status}</p>
+      {analysisResults ? (
         <div>
-          <h2>Messages:</h2>
-          <ul>
-            {messages.map((msg, index) => (
-              <li key={index}>
-                <pre>{JSON.stringify(JSON.parse(msg), null, 2)}</pre>
-                <button
-                  onClick={async () => {
-                    await sendMessageToAI(msg);
-                    setAIResponses((prev) => [
-                      ...prev,
-                      "Sending to AI: " + msg,
-                    ]);
-                  }}
-                >
-                  Send to AI
-                </button>
-              </li>
-            ))}
-            {aiResponses.map((msg, index) => (
-              <li key={index}>
-                <p>{msg}</p>
-              </li>
-            ))}
-          </ul>
-          {/* <button
-            onClick={() => {
-              sendMessageToAI("Analayze this: " + JSON.stringify(json));
+          <div style={{ position: "absolute", top: "10px", left: "10px" }}>
+            <img
+              src="/Icon/GH_Quest_Icon_Transparent.png"
+              alt="App Icon"
+              style={{
+                width: "350px",
+              }}
+            />
+          </div>
+          <h1>🎓</h1>
+          <h1>Grasshopper Tutorial Completion Dashboard</h1>
+          {analysisResults.score_out_of_100 >= 90 && (
+            <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+              <h2>✨ Crushing it — you’re in full parametric flow!</h2>
+              <p>
+                🎉 Outstanding work! You’ve nailed this tutorial with precision
+                and efficiency. Your solution reflects a solid understanding of
+                Grasshopper components and workflows. Keep this momentum going
+                as you take on more complex challenges!
+              </p>
+            </div>
+          )}
+          {analysisResults.score_out_of_100 >= 75 &&
+            analysisResults.score_out_of_100 < 90 && (
+              <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+                <h2>🚀 Strong execution with room to streamline.</h2>
+                <p>
+                  ✅ Great job! You’ve done really well on this tutorial. Your
+                  graph is functional and mostly optimized. With a bit of
+                  refinement — like cleaning up extra components or tightening
+                  execution — you’ll be performing like a pro in no time!
+                </p>
+              </div>
+            )}
+          {analysisResults.score_out_of_100 >= 60 &&
+            analysisResults.score_out_of_100 < 75 && (
+              <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+                <h2>🛠️ Solid effort — let’s tighten things up.</h2>
+                <p>
+                  👍 You’re getting there! Your effort is showing, and the
+                  foundations are solid. There are a few areas that could use
+                  improvement, such as simplifying your setup or ensuring full
+                  task completion. Stick with it — your parametric skills are
+                  growing fast!
+                </p>
+              </div>
+            )}
+          {analysisResults.score_out_of_100 >= 40 &&
+            analysisResults.score_out_of_100 < 60 && (
+              <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+                <h2>📚 On the path — clarity and cleanup will help.</h2>
+                <p>
+                  🧱 Solid start, but there’s room to grow. You’ve taken some
+                  important steps toward mastering this workflow, but the
+                  outcome was either incomplete or could benefit from better
+                  structure. Let’s use this as a learning opportunity to refine
+                  your graph.
+                </p>
+              </div>
+            )}
+          {analysisResults.score_out_of_100 < 40 && (
+            <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+              <h2>🌱 It’s a start — learning grows from here.</h2>
+              <p>
+                🌱 Every expert was once a beginner. This attempt didn’t hit the
+                mark, but don’t be discouraged! Learning Grasshopper takes time.
+                Let’s break things down and take another shot — you’re on the
+                right path by showing up and trying.
+              </p>
+            </div>
+          )}
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "4rem",
+              borderTop: "1px solid #ccc",
+              marginLeft: "15%",
+              marginRight: "15%",
             }}
           >
-            Send to AI
-          </button> */}
+            <h2>📊 Overall Score</h2>
+            <p>Score: {analysisResults.score_out_of_100} / 100</p>
+            <p>
+              Rating:{" "}
+              {analysisResults.score_out_of_100 >= 90
+                ? "⭐⭐⭐⭐⭐"
+                : analysisResults.score_out_of_100 >= 75
+                ? "⭐⭐⭐⭐☆"
+                : analysisResults.score_out_of_100 >= 60
+                ? "⭐⭐⭐☆☆"
+                : analysisResults.score_out_of_100 >= 40
+                ? "⭐⭐☆☆☆"
+                : "⭐☆☆☆☆"}
+              (based on thresholds)
+            </p>
+          </div>
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "2rem",
+              marginBottom: "2rem",
+              marginLeft: "15%",
+              marginRight: "15%",
+              borderTop: "1px solid #ccc",
+            }}
+          >
+            <h2>🧪 Evaluation Metrics Breakdown</h2>
+            <table
+              style={{
+                margin: "0 auto",
+                borderCollapse: "collapse",
+                width: "80%",
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                    Metric
+                  </th>
+                  <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                    Value (Student)
+                  </th>
+                  <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                    Value (Tutorial)
+                  </th>
+                  <th style={{ border: "1px solid #ddd", padding: "8px" }}>
+                    Penalty
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(analysisResults.scoring_breakdown).map(
+                  ([metric, values]) => (
+                    <tr key={metric}>
+                      <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                        {metricEmoticons[metric]}{" "}
+                        {metric
+                          .replace(/_/g, " ")
+                          .toLowerCase()
+                          .replace(/^\w|\s\w/g, (c) => c.toUpperCase())}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                        {values.student}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                        {values.tutorial}
+                      </td>
+                      <td style={{ border: "1px solid #ddd", padding: "8px" }}>
+                        {values.penalty}
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div
+            style={{
+              textAlign: "center",
+              marginTop: "2rem",
+              marginBottom: "2rem",
+              marginLeft: "15%",
+              marginRight: "15%",
+              borderTop: "1px solid #ccc",
+            }}
+          >
+            <h2>🧠 Suggestions for Improvement</h2>
+            <ul
+              style={{
+                textAlign: "left",
+                padding: "20px",
+                listStyleType: "none",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                flexDirection: "column",
+              }}
+            >
+              {analysisResults.suggestions.map((suggestion, index) => (
+                <li
+                  key={index}
+                  style={{
+                    maxWidth: "700px",
+                    marginBottom: "10px",
+                    padding: "10px",
+                    backgroundColor: "#fff",
+                    borderRadius: "4px",
+                    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
+                  }}
+                >
+                  {suggestion}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100vh",
+            backgroundColor: "#f9f9f9",
+            color: "#333",
+            fontFamily: "Arial, sans-serif",
+          }}
+        >
+          <h2 style={{ fontSize: "2rem", marginBottom: "1rem" }}>Loading...</h2>
+          <p style={{ fontSize: "1.2rem" }}>
+            Please wait while we analyze your results.
+          </p>
+        </div>
+      )}
     </>
   );
 }
