@@ -247,8 +247,6 @@ export const studentOutcome = {
 };
 
 export const exampleAalysisResults = {
-  student: "Bad Graph",
-  tutorial: "Good Graph",
   overall_score: 72,
   scoring_breakdown: {
     runtime_speed: {

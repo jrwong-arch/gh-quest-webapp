@@ -1,9 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  exampleAalysisResults,
-  studentOutcome,
-  tutorialOutcome,
-} from "./constants";
+import { exampleAalysisResults } from "./constants";
 import "./App.css";
 
 function App() {
@@ -20,16 +16,7 @@ function App() {
   };
 
   const [analysisResults, setAnalysisResults] = useState();
-  const [filesToAnalyze, setFilesToAnalyze] = useState([
-    {
-      name: "student",
-      content: studentOutcome,
-    },
-    {
-      name: "tutorial",
-      content: tutorialOutcome,
-    },
-  ]);
+  const [filesToAnalyze, setFilesToAnalyze] = useState("");
   const [status, setStatus] = useState("Disconnected");
 
   useEffect(() => {
@@ -44,7 +31,7 @@ function App() {
 
     // Handle incoming messages
     ws.onmessage = (event) => {
-      console.log("Message received:", event.data);
+      // console.log("Message received:", event.data);
       setFilesToAnalyze(event.data);
     };
 
@@ -65,63 +52,64 @@ function App() {
     };
   }, []);
 
-  const sendMessageToAI = async () => {
-    try {
-      const evaluationResults = JSON.stringify({
-        prompt:
-          "evaluate the two graphs student and tutorial based on the evaluation paradigm based on example anylysis results and return the response in a json format that adheres to the example anylysis results. make sure to fit the exact json format in the example anylysis results.",
-        studentOutcome: filesToAnalyze[0].content,
-        tutorialOutcome: filesToAnalyze[1].content,
-        exampleAalysisResults,
-      });
-      console.log("Evaluation Results:", evaluationResults);
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: evaluationResults,
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API call failed with status ${response.status}`);
-      }
-
-      const data = await response.json();
-      const extractedText =
-        data.candidates[0]?.content?.parts[0]?.text || "No text found";
-      // Extract valid JSON from the response text
-      const jsonStart = extractedText.indexOf("{");
-      const jsonEnd = extractedText.lastIndexOf("}");
-      const validJson = extractedText.substring(jsonStart, jsonEnd + 1);
-
-      const parsedResponse = JSON.parse(validJson);
-      console.log("Parsed AI response:", parsedResponse);
-      console.log("AI response:", data);
-
-      // Extract the AI response text and update the state
-      setAnalysisResults(parsedResponse);
-    } catch (error) {
-      console.error("Error communicating with AI:", error);
-    }
-  };
-
   useEffect(() => {
-    // Call the sendMessageToAI function when the component mounts
-    sendMessageToAI();
-  }, []);
+    async function fetchEvaluationResults() {
+      try {
+        if (!filesToAnalyze.length) {
+          console.log("No files to analyze yet.");
+          return;
+        }
+        const evaluationResults = JSON.stringify({
+          prompt:
+            "evaluate the two graphs UserAndGoalState against each other based on the evaluation paradigm runtime speed, component count, external packages, errors, warnings, redundant components and objective completion return the response in a json format that adheres exactly to the example anylysis results. Make sure to fit the exact schema of the example analysis results. Values for UserState are student values and values in GoalState are tutorial values. The penalty is the difference between the two values. The overall score should reflect how the student performed against the tutorial. Include at least 4 suggestions and have them detailed, specially if the score is below 60",
+          UserAndGoalState: filesToAnalyze,
+          exampleAalysisResults,
+        });
+        console.log("Evaluation Results:", evaluationResults);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: evaluationResults,
+                  },
+                ],
+              },
+            ],
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API call failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        const extractedText =
+          data.candidates[0]?.content?.parts[0]?.text || "No text found";
+        // Extract valid JSON from the response text
+        const jsonStart = extractedText.indexOf("{");
+        const jsonEnd = extractedText.lastIndexOf("}");
+        const validJson = extractedText.substring(jsonStart, jsonEnd + 1);
+
+        const parsedResponse = JSON.parse(validJson);
+        console.log("Parsed AI response:", parsedResponse);
+        console.log("AI response:", data);
+
+        // Extract the AI response text and update the state
+        setAnalysisResults(parsedResponse);
+      } catch (error) {
+        console.error("Error communicating with AI:", error);
+      }
+    }
+    fetchEvaluationResults();
+  }, [filesToAnalyze]);
 
   return (
     <>
